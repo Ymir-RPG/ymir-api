@@ -6,16 +6,12 @@ from sqlalchemy import and_
 from sqlalchemy.orm.exc import NoResultFound
 
 from ymir.models import World, Character, Place, Item
-from ymir.db import get_session
-from ymir import app
+from ymir import app, db
 
 
-session = get_session()
-
-
-def set_session(db_conn_str):
-    global session
-    session = get_session(db_conn_str)
+def set_session(conn_str):
+    app.config['SQLALCHEMY_DATABASE_URI'] = conn_str
+    db.create_all()
 
 
 def _get_request_data(request):
@@ -32,7 +28,7 @@ def _get_request_data(request):
 @app.route("/worlds", methods=["GET"])
 def worlds_get():
     data = _get_request_data(request)
-    query = session.query(World)
+    query = db.session.query(World)
     if data.get('chronological', False):
         query = query.order_by(World.last_updated.desc())
     return json.dumps([i.to_dict() for i in query.all()])
@@ -43,16 +39,15 @@ def worlds_post():
     data = _get_request_data(request)
     name = data["name"]
     world = World(name=name, last_updated=datetime.now())
-    session.add(world)
-    session.commit()
+    db.session.add(world)
+    db.session.commit()
     return json.dumps(world.to_dict())
 
 
 @app.route("/worlds/<world_id>", methods=["GET"])
 def world_id_get(world_id):
     try:
-        return json.dumps(session.query(
-            World).filter(World.id == world_id).one().to_dict())
+        return json.dumps(World.query.filter(World.id == world_id).one().to_dict())
     except NoResultFound:
         abort(404)
 
@@ -60,28 +55,28 @@ def world_id_get(world_id):
 @app.route("/worlds/<world_id>", methods=["PUT"])
 def world_id_put(world_id):
     data = _get_request_data(request)
-    world = session.query(World).filter(World.id == world_id).one()
+    world = World.query.filter(World.id == world_id).one()
     world.name = data.get("name", world.name)
     world.last_updated = datetime.now()
-    session.commit()
+    db.session.commit()
     return json.dumps(world.to_dict())
 
 
 @app.route("/worlds/<world_id>", methods=["DELETE"])
 def world_id_delete(world_id):
     try:
-        world = session.query(World).filter(World.id == world_id).one()
+        world = World.query.filter(World.id == world_id).one()
     except NoResultFound:
         abort(404)
-    session.delete(world)
-    session.commit()
+    db.session.delete(world)
+    db.session.commit()
     return ('', 204)
 
 
 @app.route("/worlds/<world_id>/characters", methods=["GET"])
 def characters_get(world_id):
     data = _get_request_data(request)
-    query = session.query(Character).filter(Character.world_id == world_id)
+    query = Character.query.filter(Character.world_id == world_id)
     if data.get('chronological', False):
         query = query.order_by(Character.last_updated.desc())
     if "placeId" in data:
@@ -97,15 +92,15 @@ def characters_post(world_id):
     if "placeId" in data:
         character.place_id = data["placeId"]
     character.last_updated = datetime.now()
-    session.add(character)
-    session.commit()
+    db.session.add(character)
+    db.session.commit()
     return json.dumps(character.to_dict())
 
 
 @app.route("/worlds/<world_id>/characters/<character_id>", methods=["GET"])
 def character_id_get(world_id, character_id):
     try:
-        return json.dumps(session.query(Character).filter(and_(
+        return json.dumps(Character.query.filter(and_(
             Character.world_id == world_id,
             Character.id == character_id)).one().to_dict())
     except NoResultFound:
@@ -116,14 +111,14 @@ def character_id_get(world_id, character_id):
 def character_name_put(world_id, character_id):
     data = _get_request_data(request)
     try:
-        character = session.query(Character).filter(
+        character = Character.query.filter(
             and_(Character.world_id == world_id, Character.id == character_id)).one()
     except NoResultFound:
         abort(404)
     character.name = data.get("name", character.name)
     character.place_id = data.get("place_id", character.place_id)
     character.last_updated = datetime.now()
-    session.commit()
+    db.session.commit()
     # TODO(Skyler): If there is no change, we should return a different status
     return json.dumps(character.to_dict())
 
@@ -132,19 +127,19 @@ def character_name_put(world_id, character_id):
            methods=["DELETE"])
 def character_name_delete(world_id, character_id):
     try:
-        character = session.query(Character).filter(
+        character = Character.query.filter(
             and_(Character.world_id == world_id, Character.id == character_id)).one()
     except NoResultFound:
         abort(404)
-    session.delete(character)
-    session.commit()
+    db.session.delete(character)
+    db.session.commit()
     return ('', 204)
 
 
 @app.route("/worlds/<world_id>/places", methods=["GET"])
 def places_get(world_id):
     data = _get_request_data(request)
-    query = session.query(Place).filter(Place.world_id == world_id)
+    query = Place.query.filter(Place.world_id == world_id)
     if data.get('chronological', False):
         query = query.order_by(Place.last_updated.desc())
     return json.dumps([i.to_dict() for i in query.all()])
@@ -156,16 +151,15 @@ def places_post(world_id):
     name = data["name"]
     place = Place(name=name, world_id=world_id)
     place.last_updated = datetime.now()
-
-    session.add(place)
-    session.commit()
+    db.session.add(place)
+    db.session.commit()
     return json.dumps(place.to_dict())
 
 
 @app.route("/worlds/<world_id>/places/<places_id>", methods=["GET"])
 def places_id_get(world_id, places_id):
     try:
-        return json.dumps(session.query(Place).filter(and_(
+        return json.dumps(Place.query.filter(and_(
             Place.world_id == world_id, Place.id == places_id)).one().to_dict())
     except NoResultFound:
         abort(404)
@@ -175,13 +169,13 @@ def places_id_get(world_id, places_id):
 def places_name_put(world_id, place_id):
     data = _get_request_data(request)
     try:
-        place = session.query(Place).filter(
+        place = Place.query.filter(
             and_(Place.world_id == world_id, Place.id == place_id)).one()
     except NoResultFound:
         abort(404)
     place.name = data.get("name", place.name)
     place.last_updated = datetime.now()
-    session.commit()
+    db.session.commit()
     # TODO(Skyler): If there is no change, we should return a different status
     return json.dumps(place.to_dict())
 
@@ -190,19 +184,19 @@ def places_name_put(world_id, place_id):
            methods=["DELETE"])
 def places_name_delete(world_id, place_id):
     try:
-        place = session.query(Place).filter(
+        place = Place.query.filter(
             and_(Place.world_id == world_id, Place.id == place_id)).one()
     except NoResultFound:
         abort(404)
-    session.delete(place)
-    session.commit()
+    db.session.delete(place)
+    db.session.commit()
     return ('', 204)
 
 
 @app.route("/worlds/<world_id>/items", methods=["GET"])
 def items_get(world_id):
     data = _get_request_data(request)
-    query = session.query(Item).filter(Item.world_id == world_id)
+    query = Item.query.filter(Item.world_id == world_id)
     if data.get('chronological', False):
         query = query.order_by(Item.last_updated.desc())
     if "placeId" in data:
@@ -222,15 +216,15 @@ def items_post(world_id):
     if "characterId" in data:
         item.character_id = data["characterId"]
     item.last_updated = datetime.now()
-    session.add(item)
-    session.commit()
+    db.session.add(item)
+    db.session.commit()
     return json.dumps(item.to_dict())
 
 
 @app.route("/worlds/<world_id>/items/<item_id>", methods=["GET"])
 def item_get(world_id, item_id):
     try:
-        return json.dumps(session.query(Item).filter(and_(
+        return json.dumps(Item.query.filter(and_(
             Item.world_id == world_id,
             Item.id == item_id)).one().to_dict())
     except NoResultFound:
@@ -241,7 +235,7 @@ def item_get(world_id, item_id):
 def item_put(world_id, item_id):
     data = _get_request_data(request)
     try:
-        item = session.query(Item).filter(
+        item = Item.query.filter(
             and_(Item.world_id == world_id, Item.id == item_id)).one()
     except NoResultFound:
         abort(404)
@@ -249,7 +243,7 @@ def item_put(world_id, item_id):
     item.place_id = data.get("place_id", item.place_id)
     item.character_id = data.get("character_id", item.character_id)
     item.last_updated = datetime.now()
-    session.commit()
+    db.session.commit()
     # TODO(Skyler): If there is no change, we should return a different status
     return json.dumps(item.to_dict())
 
@@ -257,10 +251,10 @@ def item_put(world_id, item_id):
 @app.route("/worlds/<world_id>/items/<item_id>", methods=["DELETE"])
 def item_delete(world_id, item_id):
     try:
-        item = session.query(Item).filter(
+        item = Item.query.filter(
             and_(Item.world_id == world_id, Item.id == item_id)).one()
     except NoResultFound:
         abort(404)
-    session.delete(item)
-    session.commit()
+    db.session.delete(item)
+    db.session.commit()
     return ('', 204)

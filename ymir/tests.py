@@ -1,5 +1,7 @@
 """
 Integration tests for Ymir API.
+
+Note, this will not work on Windows because it uses the /tmp directory.
 """
 
 import unittest
@@ -11,14 +13,12 @@ import time
 from ymir import api
 from ymir import app
 
-api.set_session("sqlite:///tests.sqlite")
-
 
 class TestApi(unittest.TestCase):
 
     def setUp(self):
         self.client = app.test_client()
-        self.db_file = str(uuid4())
+        self.db_file = "/tmp/" + str(uuid4())
         self.db = "sqlite:///" + self.db_file
         api.set_session(self.db)
 
